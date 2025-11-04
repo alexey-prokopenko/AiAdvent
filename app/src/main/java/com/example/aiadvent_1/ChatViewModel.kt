@@ -8,7 +8,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 class ChatViewModel : ViewModel() {
-    private val geminiService = GeminiService()
+    private val openRouterService = OpenRouterService()
     
     private val _messages = MutableStateFlow<List<ChatMessage>>(emptyList())
     val messages: StateFlow<List<ChatMessage>> = _messages.asStateFlow()
@@ -26,7 +26,7 @@ class ChatViewModel : ViewModel() {
 
         viewModelScope.launch {
             try {
-                val response = geminiService.generateResponse(message)
+                val response = openRouterService.generateResponse(message)
                 val aiMessage = ChatMessage(response, false)
                 _messages.value = _messages.value + aiMessage
             } catch (e: Exception) {
