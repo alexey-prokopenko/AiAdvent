@@ -27,6 +27,7 @@ android {
             localProperties.load(FileInputStream(localPropertiesFile))
         }
         buildConfigField("String", "GEMINI_API_KEY", "\"${localProperties.getProperty("GEMINI_API_KEY", "")}\"")
+        buildConfigField("String", "YANDEX_API_KEY", "\"${localProperties.getProperty("YANDEX_API_KEY", "")}\"")
     }
 
     buildTypes {
