@@ -8,7 +8,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 class ChatViewModel : ViewModel() {
-    private val openRouterService = OpenRouterService()
+    private val deepSeekService = DeepSeekService()
     
     private val _messages = MutableStateFlow<List<ChatMessage>>(emptyList())
     val messages: StateFlow<List<ChatMessage>> = _messages.asStateFlow()
@@ -26,7 +26,8 @@ class ChatViewModel : ViewModel() {
 
         viewModelScope.launch {
             try {
-                val response = openRouterService.generateResponse(message)
+                // Передаем только текущее сообщение пользователя без истории
+                val response = deepSeekService.generateResponse(message)
                 val aiMessage = ChatMessage(response, false)
                 _messages.value = _messages.value + aiMessage
             } catch (e: Exception) {
