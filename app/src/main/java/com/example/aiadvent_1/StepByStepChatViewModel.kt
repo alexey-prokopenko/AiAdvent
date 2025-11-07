@@ -7,7 +7,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-class ChatViewModel : ViewModel() {
+class StepByStepChatViewModel : ViewModel() {
     private val deepSeekService = DeepSeekService()
     
     private val _messages = MutableStateFlow<List<ChatMessage>>(emptyList())
@@ -26,8 +26,8 @@ class ChatViewModel : ViewModel() {
 
         viewModelScope.launch {
             try {
-                // Обычный чат без пошагового анализа
-                val response = deepSeekService.generateResponse(message, stepByStep = false)
+                // Всегда используем пошаговый анализ
+                val response = deepSeekService.generateResponse(message, stepByStep = true)
                 val aiMessage = ChatMessage(response, false)
                 _messages.value = _messages.value + aiMessage
             } catch (e: Exception) {
@@ -42,4 +42,5 @@ class ChatViewModel : ViewModel() {
     fun clearChat() {
         _messages.value = emptyList()
     }
-} 
+}
+

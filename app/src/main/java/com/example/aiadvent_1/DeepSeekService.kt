@@ -27,9 +27,27 @@ class DeepSeekService {
     private val model = "deepseek-chat"
     
     // Системный промпт с инструкциями для модели
-    private val systemPrompt = """
+    private val baseSystemPrompt = """
         Ты - полезный ассистент. Отвечай на вопросы пользователя дружелюбно и информативно.
     """.trimIndent()
+    
+    private fun getSystemPrompt(stepByStep: Boolean): String {
+        return if (stepByStep) {
+            """
+            $baseSystemPrompt
+            
+            Когда пользователь задает задачу или вопрос, требующий решения, обязательно предоставляй пошаговый анализ:
+            1. Разбери задачу на этапы
+            2. Объясни каждый шаг решения подробно
+            3. Покажи промежуточные результаты
+            4. Приведи финальный ответ с обоснованием
+            
+            Используй нумерацию или маркеры для лучшей читаемости.
+            """.trimIndent()
+        } else {
+            baseSystemPrompt
+        }
+    }
 
     private val loggingInterceptor = HttpLoggingInterceptor().apply {
         level = HttpLoggingInterceptor.Level.BODY
@@ -50,12 +68,12 @@ class DeepSeekService {
     
     private val api = retrofit.create(DeepSeekApi::class.java)
     
-    suspend fun generateResponse(userMessage: String): String {
+    suspend fun generateResponse(userMessage: String, stepByStep: Boolean = false): String {
         return withContext(Dispatchers.IO) {
             try {
                 // Формируем список сообщений для API - только системный промпт и текущее сообщение пользователя
                 val apiMessages = listOf(
-                    ChatMessageRequest(role = "system", content = systemPrompt),
+                    ChatMessageRequest(role = "system", content = getSystemPrompt(stepByStep)),
                     ChatMessageRequest(role = "user", content = userMessage)
                 )
                 
