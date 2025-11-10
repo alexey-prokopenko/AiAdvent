@@ -42,7 +42,7 @@ fun ChatScreen(
         modifier = modifier.fillMaxSize(),
         topBar = {
             TopAppBar(
-                title = { Text("AI Chat", fontSize = 20.sp, fontWeight = FontWeight.Bold) },
+                title = { Text("AI Chat Precise (0.0)", fontSize = 20.sp, fontWeight = FontWeight.Bold) },
                 actions = {
                     IconButton(onClick = { viewModel.clearChat() }) {
                         Icon(Icons.Default.Clear, contentDescription = "Очистить чат")

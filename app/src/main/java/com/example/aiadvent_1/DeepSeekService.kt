@@ -50,7 +50,7 @@ class DeepSeekService {
     
     private val api = retrofit.create(DeepSeekApi::class.java)
     
-    suspend fun generateResponse(userMessage: String): String {
+    suspend fun generateResponse(userMessage: String, temperature: Double = 0.0): String {
         return withContext(Dispatchers.IO) {
             try {
                 // Формируем список сообщений для API - только системный промпт и текущее сообщение пользователя
@@ -62,7 +62,8 @@ class DeepSeekService {
                 val request = ChatCompletionRequest(
                     model = model,
                     messages = apiMessages,
-                    max_tokens = 2000
+                    max_tokens = 2000,
+                    temperature = temperature
                 )
                 
                 val response = api.createChatCompletion(

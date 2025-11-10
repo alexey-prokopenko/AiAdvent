@@ -4,6 +4,7 @@ data class ChatCompletionRequest(
     val model: String,
     val messages: List<ChatMessageRequest>,
     val max_tokens: Int? = null,
+    val temperature: Double? = null,
     val stop: List<String>? = null
 )
 

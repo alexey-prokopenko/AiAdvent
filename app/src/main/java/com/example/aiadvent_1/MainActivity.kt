@@ -23,7 +23,7 @@ class MainActivity : ComponentActivity() {
                 Surface(
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    ChatScreen()
+                    MainScreen()
                 }
             }
         }
