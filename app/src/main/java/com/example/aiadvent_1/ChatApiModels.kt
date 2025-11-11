@@ -13,7 +13,14 @@ data class ChatMessageRequest(
 )
 
 data class ChatCompletionResponse(
-    val choices: List<Choice>
+    val choices: List<Choice>,
+    val usage: Usage? = null
+)
+
+data class Usage(
+    val prompt_tokens: Int? = null,
+    val completion_tokens: Int? = null,
+    val total_tokens: Int? = null
 )
 
 data class Choice(

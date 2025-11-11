@@ -7,8 +7,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-class ChatViewModel : ViewModel() {
-    private val huggingFaceService = HuggingFaceService()
+class OpenHandsChatViewModel : ViewModel() {
+    private val openHandsService = OpenHandsService()
     
     private val _messages = MutableStateFlow<List<ChatMessage>>(emptyList())
     val messages: StateFlow<List<ChatMessage>> = _messages.asStateFlow()
@@ -27,7 +27,7 @@ class ChatViewModel : ViewModel() {
         viewModelScope.launch {
             try {
                 // Передаем только текущее сообщение пользователя без истории
-                val response = huggingFaceService.generateResponse(message)
+                val response = openHandsService.generateResponse(message)
                 val aiMessage = ChatMessage(response, false)
                 _messages.value = _messages.value + aiMessage
             } catch (e: Exception) {
@@ -42,4 +42,5 @@ class ChatViewModel : ViewModel() {
     fun clearChat() {
         _messages.value = emptyList()
     }
-} 
+}
+

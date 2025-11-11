@@ -7,6 +7,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.*
@@ -25,6 +26,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun ChatScreen(
     modifier: Modifier = Modifier,
+    onBackClick: () -> Unit = {},
     viewModel: ChatViewModel = viewModel()
 ) {
     val messages by viewModel.messages.collectAsState()
@@ -42,7 +44,12 @@ fun ChatScreen(
         modifier = modifier.fillMaxSize(),
         topBar = {
             TopAppBar(
-                title = { Text("AI Chat", fontSize = 20.sp, fontWeight = FontWeight.Bold) },
+                title = { Text("MiniMax Chat", fontSize = 20.sp, fontWeight = FontWeight.Bold) },
+                navigationIcon = {
+                    IconButton(onClick = onBackClick) {
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Назад")
+                    }
+                },
                 actions = {
                     IconButton(onClick = { viewModel.clearChat() }) {
                         Icon(Icons.Default.Clear, contentDescription = "Очистить чат")
