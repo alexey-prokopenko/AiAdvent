@@ -23,7 +23,7 @@ interface OpenHandsApi {
 }
 
 class OpenHandsService {
-    private val apiKey = "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"
+    private val apiKey = "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"
     private val baseUrl = "https://router.huggingface.co/"
     private val model = "deepcogito/cogito-v1-preview-llama-8B:featherless-ai"
     

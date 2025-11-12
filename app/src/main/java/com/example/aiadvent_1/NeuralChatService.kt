@@ -23,7 +23,7 @@ interface NeuralChatApi {
 }
 
 class NeuralChatService {
-    private val apiKey = "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"
+    private val apiKey = "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"
     private val baseUrl = "https://router.huggingface.co/"
     private val model = "Intel/neural-chat-7b-v3-1:featherless-ai"
     

@@ -23,7 +23,7 @@ interface HuggingFaceApi {
 }
 
 class HuggingFaceService {
-    private val apiKey = "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"
+    private val apiKey = "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"
     private val baseUrl = "https://router.huggingface.co/"
     private val model = "MiniMaxAI/MiniMax-M2:novita"
     
