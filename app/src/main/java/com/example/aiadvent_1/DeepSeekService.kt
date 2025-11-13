@@ -11,6 +11,7 @@ import retrofit2.http.Body
 import retrofit2.http.Header
 import retrofit2.http.POST
 import java.util.concurrent.TimeUnit
+import android.util.Log
 
 interface DeepSeekApi {
     @POST("v1/chat/completions")
@@ -52,6 +53,7 @@ class DeepSeekService {
     
     suspend fun generateResponse(userMessage: String): String {
         return withContext(Dispatchers.IO) {
+            val startTime = System.currentTimeMillis()
             try {
                 // Формируем список сообщений для API - только системный промпт и текущее сообщение пользователя
                 val apiMessages = listOf(
@@ -71,13 +73,43 @@ class DeepSeekService {
                     request = request
                 )
                 
-                response.choices.firstOrNull()?.message?.content
+                val endTime = System.currentTimeMillis()
+                val responseTime = endTime - startTime
+                val responseTimeSeconds = responseTime / 1000.0
+                
+                val content = response.choices.firstOrNull()?.message?.content
                     ?: "Извините, не удалось получить ответ."
+                
+                // Извлекаем информацию о токенах
+                val usage = response.usage
+                val promptTokens = usage?.prompt_tokens ?: 0
+                val completionTokens = usage?.completion_tokens ?: 0
+                val totalTokens = usage?.total_tokens ?: (promptTokens + completionTokens)
+                
+                // Логируем время ответа и токены
+                Log.d("DeepSeekService", "Время ответа модели: ${responseTime}ms (${String.format("%.2f", responseTimeSeconds)}s)")
+                Log.d("DeepSeekService", "Токены - Входные: $promptTokens, Выходные: $completionTokens, Всего: $totalTokens")
+                
+                // Формируем строку с информацией о токенах
+                val tokensInfo = if (totalTokens > 0) {
+                    "🔢 Токены: входные $promptTokens, выходные $completionTokens, всего $totalTokens"
+                } else {
+                    "🔢 Токены: информация недоступна"
+                }
+                
+                // Добавляем время ответа и информацию о токенах в конец сообщения для отображения в UI
+                "$content\n\n⏱ Время ответа: ${String.format("%.2f", responseTimeSeconds)}s\n$tokensInfo"
             } catch (e: HttpException) {
+                val endTime = System.currentTimeMillis()
+                val responseTime = endTime - startTime
                 val errorBody = e.response()?.errorBody()?.string()
                 val errorMessage = errorBody ?: e.message()
+                Log.e("DeepSeekService", "Ошибка HTTP ${e.code()} за ${responseTime}ms: $errorMessage")
                 "Произошла ошибка HTTP ${e.code()}: $errorMessage"
             } catch (e: Exception) {
+                val endTime = System.currentTimeMillis()
+                val responseTime = endTime - startTime
+                Log.e("DeepSeekService", "Ошибка за ${responseTime}ms: ${e.message}")
                 "Произошла ошибка: ${e.message}"
             }
         }
