@@ -51,15 +51,24 @@ class DeepSeekService {
     
     private val api = retrofit.create(DeepSeekApi::class.java)
     
-    suspend fun generateResponse(userMessage: String): String {
+    suspend fun generateResponse(userMessage: String, conversationHistory: List<ChatMessage> = emptyList()): String {
         return withContext(Dispatchers.IO) {
             val startTime = System.currentTimeMillis()
             try {
-                // Формируем список сообщений для API - только системный промпт и текущее сообщение пользователя
-                val apiMessages = listOf(
-                    ChatMessageRequest(role = "system", content = systemPrompt),
-                    ChatMessageRequest(role = "user", content = userMessage)
-                )
+                // Формируем список сообщений для API
+                val apiMessages = mutableListOf<ChatMessageRequest>()
+                
+                // Добавляем системный промпт
+                apiMessages.add(ChatMessageRequest(role = "system", content = systemPrompt))
+                
+                // Добавляем историю диалога (только summary и последние сообщения)
+                conversationHistory.forEach { message ->
+                    val role = if (message.isFromUser) "user" else "assistant"
+                    apiMessages.add(ChatMessageRequest(role = role, content = message.text))
+                }
+                
+                // Добавляем текущее сообщение пользователя
+                apiMessages.add(ChatMessageRequest(role = "user", content = userMessage))
                 
                 val request = ChatCompletionRequest(
                     model = model,
@@ -111,6 +120,67 @@ class DeepSeekService {
                 val responseTime = endTime - startTime
                 Log.e("DeepSeekService", "Ошибка за ${responseTime}ms: ${e.message}")
                 "Произошла ошибка: ${e.message}"
+            }
+        }
+    }
+    
+    suspend fun createSummary(messages: List<ChatMessage>): String {
+        return withContext(Dispatchers.IO) {
+            val startTime = System.currentTimeMillis()
+            try {
+                // Формируем текст для summary
+                val conversationText = messages.joinToString("\n") { message ->
+                    val role = if (message.isFromUser) "Пользователь" else "Ассистент"
+                    "$role: ${message.text}"
+                }
+                
+                val summaryPrompt = """
+                    Создай краткое резюме следующего диалога, сохраняя ключевые моменты и контекст.
+                    Резюме должно быть на русском языке и содержать основную информацию из диалога.
+                    
+                    Диалог:
+                    $conversationText
+                    
+                    Резюме:
+                """.trimIndent()
+                
+                val apiMessages = listOf(
+                    ChatMessageRequest(role = "system", content = systemPrompt),
+                    ChatMessageRequest(role = "user", content = summaryPrompt)
+                )
+                
+                val request = ChatCompletionRequest(
+                    model = model,
+                    messages = apiMessages,
+                    max_tokens = 500
+                )
+                
+                val response = api.createChatCompletion(
+                    authorization = "Bearer $apiKey",
+                    contentType = "application/json",
+                    request = request
+                )
+                
+                val endTime = System.currentTimeMillis()
+                val responseTime = endTime - startTime
+                
+                val summary = response.choices.firstOrNull()?.message?.content
+                    ?: "Не удалось создать резюме."
+                
+                Log.d("DeepSeekService", "Summary создан за ${responseTime}ms")
+                summary
+            } catch (e: HttpException) {
+                val endTime = System.currentTimeMillis()
+                val responseTime = endTime - startTime
+                val errorBody = e.response()?.errorBody()?.string()
+                val errorMessage = errorBody ?: e.message()
+                Log.e("DeepSeekService", "Ошибка HTTP ${e.code()} при создании summary за ${responseTime}ms: $errorMessage")
+                "Ошибка при создании резюме: $errorMessage"
+            } catch (e: Exception) {
+                val endTime = System.currentTimeMillis()
+                val responseTime = endTime - startTime
+                Log.e("DeepSeekService", "Ошибка при создании summary за ${responseTime}ms: ${e.message}")
+                "Ошибка при создании резюме: ${e.message}"
             }
         }
     }

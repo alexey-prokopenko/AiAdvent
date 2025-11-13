@@ -15,6 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -29,6 +30,7 @@ fun ChatScreen(
 ) {
     val messages by viewModel.messages.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
+    val isCompressing by viewModel.isCompressing.collectAsState()
     val listState = rememberLazyListState()
     var inputText by remember { mutableStateOf("") }
     
@@ -90,6 +92,12 @@ fun ChatScreen(
                     LoadingIndicator()
                 }
             }
+            
+            if (isCompressing) {
+                item {
+                    CompressingIndicator()
+                }
+            }
         }
     }
 }
@@ -97,15 +105,21 @@ fun ChatScreen(
 @Composable
 fun MessageBubble(message: ChatMessage) {
     val alignment = if (message.isFromUser) Alignment.End else Alignment.Start
-    val backgroundColor = if (message.isFromUser) 
+    val backgroundColor = if (message.isSummary) {
+        MaterialTheme.colorScheme.tertiaryContainer
+    } else if (message.isFromUser) {
         MaterialTheme.colorScheme.primary 
-    else 
+    } else {
         MaterialTheme.colorScheme.secondaryContainer
+    }
     
-    val textColor = if (message.isFromUser) 
+    val textColor = if (message.isSummary) {
+        MaterialTheme.colorScheme.onTertiaryContainer
+    } else if (message.isFromUser) {
         Color.White 
-    else 
+    } else {
         MaterialTheme.colorScheme.onSecondaryContainer
+    }
     
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -123,21 +137,26 @@ fun MessageBubble(message: ChatMessage) {
                 )
                 .background(backgroundColor)
                 .padding(12.dp)
-                .widthIn(max = 280.dp),
+                .widthIn(max = if (message.isSummary) 320.dp else 280.dp),
             contentAlignment = Alignment.CenterStart
         ) {
             Text(
                 text = message.text,
                 color = textColor,
-                fontSize = 16.sp,
-                lineHeight = 20.sp
+                fontSize = if (message.isSummary) 14.sp else 16.sp,
+                lineHeight = if (message.isSummary) 18.sp else 20.sp,
+                fontStyle = if (message.isSummary) FontStyle.Italic else FontStyle.Normal
             )
         }
         
         Spacer(modifier = Modifier.height(4.dp))
         
         Text(
-            text = if (message.isFromUser) "Вы" else "AI",
+            text = when {
+                message.isSummary -> "📝 Резюме"
+                message.isFromUser -> "Вы"
+                else -> "AI"
+            },
             fontSize = 12.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 4.dp)
@@ -164,6 +183,39 @@ fun LoadingIndicator() {
                 strokeWidth = 2.dp,
                 color = MaterialTheme.colorScheme.primary
             )
+        }
+    }
+}
+
+@Composable
+fun CompressingIndicator() {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp),
+        horizontalArrangement = Arrangement.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(16.dp))
+                .background(MaterialTheme.colorScheme.tertiaryContainer)
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(16.dp),
+                    strokeWidth = 2.dp,
+                    color = MaterialTheme.colorScheme.tertiary
+                )
+                Text(
+                    text = "Сжатие истории диалога...",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer
+                )
+            }
         }
     }
 }
