@@ -1,5 +1,8 @@
 package com.example.aiadvent_1
 
+import android.util.Log
+import com.example.aiadvent_1.memory.MemoryMetadata
+import com.example.aiadvent_1.memory.MemoryRecord
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -11,7 +14,6 @@ import retrofit2.http.Body
 import retrofit2.http.Header
 import retrofit2.http.POST
 import java.util.concurrent.TimeUnit
-import android.util.Log
 
 interface DeepSeekApi {
     @POST("v1/chat/completions")
@@ -51,15 +53,25 @@ class DeepSeekService {
     
     private val api = retrofit.create(DeepSeekApi::class.java)
     
-    suspend fun generateResponse(userMessage: String): String {
+    suspend fun generateResponse(
+        userMessage: String,
+        memoryContext: List<MemoryRecord> = emptyList()
+    ): ModelResponse {
         return withContext(Dispatchers.IO) {
             val startTime = System.currentTimeMillis()
             try {
-                // Формируем список сообщений для API - только системный промпт и текущее сообщение пользователя
-                val apiMessages = listOf(
-                    ChatMessageRequest(role = "system", content = systemPrompt),
-                    ChatMessageRequest(role = "user", content = userMessage)
-                )
+                val contextualMessages = memoryContext
+                    .takeLast(MAX_CONTEXT_MESSAGES)
+                    .map { ChatMessageRequest(role = it.role, content = it.content) }
+
+                val apiMessages = mutableListOf(
+                    ChatMessageRequest(role = "system", content = systemPrompt)
+                ).apply {
+                    addAll(contextualMessages)
+                    if (contextualMessages.none { it.role == "user" && it.content == userMessage }) {
+                        add(ChatMessageRequest(role = "user", content = userMessage))
+                    }
+                }
                 
                 val request = ChatCompletionRequest(
                     model = model,
@@ -97,22 +109,45 @@ class DeepSeekService {
                     "🔢 Токены: информация недоступна"
                 }
                 
-                // Добавляем время ответа и информацию о токенах в конец сообщения для отображения в UI
-                "$content\n\n⏱ Время ответа: ${String.format("%.2f", responseTimeSeconds)}s\n$tokensInfo"
+                val messageWithStats = "$content\n\n⏱ Время ответа: ${String.format("%.2f", responseTimeSeconds)}s\n$tokensInfo"
+                ModelResponse(
+                    message = messageWithStats,
+                    metadata = MemoryMetadata(
+                        responseTimeMs = responseTime,
+                        promptTokens = promptTokens,
+                        completionTokens = completionTokens,
+                        totalTokens = totalTokens
+                    )
+                )
             } catch (e: HttpException) {
                 val endTime = System.currentTimeMillis()
                 val responseTime = endTime - startTime
                 val errorBody = e.response()?.errorBody()?.string()
                 val errorMessage = errorBody ?: e.message()
                 Log.e("DeepSeekService", "Ошибка HTTP ${e.code()} за ${responseTime}ms: $errorMessage")
-                "Произошла ошибка HTTP ${e.code()}: $errorMessage"
+                ModelResponse(
+                    message = "Произошла ошибка HTTP ${e.code()}: $errorMessage",
+                    metadata = MemoryMetadata(responseTimeMs = responseTime)
+                )
             } catch (e: Exception) {
                 val endTime = System.currentTimeMillis()
                 val responseTime = endTime - startTime
                 Log.e("DeepSeekService", "Ошибка за ${responseTime}ms: ${e.message}")
-                "Произошла ошибка: ${e.message}"
+                ModelResponse(
+                    message = "Произошла ошибка: ${e.message}",
+                    metadata = MemoryMetadata(responseTimeMs = responseTime)
+                )
             }
         }
     }
+
+    companion object {
+        private const val MAX_CONTEXT_MESSAGES = 20
+    }
 }
+
+data class ModelResponse(
+    val message: String,
+    val metadata: MemoryMetadata
+)
 

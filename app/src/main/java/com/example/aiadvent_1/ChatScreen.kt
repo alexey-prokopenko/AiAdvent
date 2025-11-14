@@ -18,15 +18,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
-import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatScreen(
-    modifier: Modifier = Modifier,
-    viewModel: ChatViewModel = viewModel()
+    modifier: Modifier = Modifier
 ) {
+    val application = LocalContext.current.applicationContext as? AiAdventApp
+        ?: error("Application must extend AiAdventApp")
+    val viewModel: ChatViewModel = viewModel(factory = ChatViewModelFactory(application))
     val messages by viewModel.messages.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val listState = rememberLazyListState()

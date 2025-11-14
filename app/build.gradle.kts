@@ -2,6 +2,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+    id("org.jetbrains.kotlin.kapt")
 }
 
 import java.util.Properties
@@ -77,6 +78,14 @@ dependencies {
     // Compose dependencies
     implementation("androidx.compose.foundation:foundation:1.6.1")
     implementation("androidx.compose.material:material-icons-extended:1.6.1")
+    
+    // Room persistence for external memory
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
+    kapt(libs.androidx.room.compiler)
+    
+    // JSON serialization for memory snapshots
+    implementation(libs.google.gson)
     
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
