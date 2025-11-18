@@ -23,3 +23,8 @@ local.properties
 # Build outputs
 /app/build/
 /build/
+
+# MCP Server binaries
+github-mcp-server
+github-mcp-server.tar.gz
+*.tar.gz

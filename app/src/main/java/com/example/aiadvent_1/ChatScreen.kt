@@ -9,6 +9,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.Build
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -19,6 +20,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.aiadvent_1.ui.McpToolsList
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -31,6 +33,7 @@ fun ChatScreen(
     val isLoading by viewModel.isLoading.collectAsState()
     val listState = rememberLazyListState()
     var inputText by remember { mutableStateOf("") }
+    var showMcpTools by remember { mutableStateOf(false) }
     
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) {
@@ -44,6 +47,9 @@ fun ChatScreen(
             TopAppBar(
                 title = { Text("AI Chat", fontSize = 20.sp, fontWeight = FontWeight.Bold) },
                 actions = {
+                    IconButton(onClick = { showMcpTools = true }) {
+                        Icon(Icons.Default.Build, contentDescription = "MCP Инструменты")
+                    }
                     IconButton(onClick = { viewModel.clearChat() }) {
                         Icon(Icons.Default.Clear, contentDescription = "Очистить чат")
                     }
@@ -90,6 +96,20 @@ fun ChatScreen(
                     LoadingIndicator()
                 }
             }
+        }
+    }
+    
+    // Bottom Sheet для списка MCP инструментов
+    if (showMcpTools) {
+        ModalBottomSheet(
+            onDismissRequest = { showMcpTools = false },
+            modifier = Modifier.fillMaxSize()
+        ) {
+            McpToolsList(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(bottom = 32.dp)
+            )
         }
     }
 }
