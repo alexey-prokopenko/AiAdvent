@@ -23,6 +23,7 @@ local.properties
 # Build outputs
 /app/build/
 /build/
+/mcp-server/build/
 
 # MCP Server binaries
 github-mcp-server

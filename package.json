@@ -1,0 +1,20 @@
+{
+  "name": "mcp-http-proxy",
+  "version": "1.0.0",
+  "description": "HTTP Proxy для MCP серверов для подключения с Android устройств",
+  "main": "mcp-http-proxy.js",
+  "scripts": {
+    "start:newsapi:kotlin": "./start-newsapi-mcp-kotlin.sh 3001"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "http-proxy"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}
+

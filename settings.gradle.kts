@@ -21,3 +21,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "AiAdvent_1"
 include(":app")
+include(":mcp-server")

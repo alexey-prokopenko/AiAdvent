@@ -1,5 +1,6 @@
 package com.example.aiadvent_1
 
+import com.example.aiadvent_1.mcp.McpIntegrationService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -22,7 +23,9 @@ interface DeepSeekApi {
     ): ChatCompletionResponse
 }
 
-class DeepSeekService {
+class DeepSeekService(
+    private val mcpIntegrationService: McpIntegrationService? = null
+) {
     private val apiKey = "sk-6cf38ad6d447491a91dd431618a5e150"
     private val baseUrl = "https://api.deepseek.com/"
     private val model = "deepseek-chat"
@@ -55,33 +58,92 @@ class DeepSeekService {
         return withContext(Dispatchers.IO) {
             val startTime = System.currentTimeMillis()
             try {
-                // Формируем список сообщений для API - только системный промпт и текущее сообщение пользователя
-                val apiMessages = listOf(
+                // Получаем инструменты MCP, если доступны
+                val tools = mcpIntegrationService?.getToolsForLlm()?.getOrNull()
+                
+                // Формируем список сообщений для API
+                val apiMessages = mutableListOf<ChatMessageRequest>(
                     ChatMessageRequest(role = "system", content = systemPrompt),
                     ChatMessageRequest(role = "user", content = userMessage)
                 )
                 
-                val request = ChatCompletionRequest(
-                    model = model,
-                    messages = apiMessages,
-                    max_tokens = 2000
-                )
+                // Максимальное количество итераций для вызова инструментов
+                val maxIterations = 5
+                var iteration = 0
+                var finalResponse: String? = null
+                var lastResponse: ChatCompletionResponse? = null
                 
-                val response = api.createChatCompletion(
-                    authorization = "Bearer $apiKey",
-                    contentType = "application/json",
-                    request = request
-                )
+                while (iteration < maxIterations) {
+                    val request = ChatCompletionRequest(
+                        model = model,
+                        messages = apiMessages,
+                        max_tokens = 2000,
+                        tools = if (tools != null && tools.isNotEmpty()) tools else null,
+                        tool_choice = if (tools != null && tools.isNotEmpty()) "auto" else null
+                    )
+                    
+                    val response = api.createChatCompletion(
+                        authorization = "Bearer $apiKey",
+                        contentType = "application/json",
+                        request = request
+                    )
+                    
+                    lastResponse = response
+                    val message = response.choices.firstOrNull()?.message
+                        ?: break
+                    
+                    // Добавляем ответ модели в историю
+                    apiMessages.add(
+                        ChatMessageRequest(
+                            role = message.role ?: "assistant",
+                            content = message.content,
+                            tool_calls = message.tool_calls
+                        )
+                    )
+                    
+                    // Проверяем, есть ли вызовы инструментов
+                    val toolCalls = message.tool_calls
+                    if (toolCalls != null && toolCalls.isNotEmpty() && mcpIntegrationService != null) {
+                        Log.d("DeepSeekService", "Обнаружено ${toolCalls.size} вызовов инструментов")
+                        
+                        // Выполняем все вызовы инструментов
+                        for (toolCall in toolCalls) {
+                            val toolName = toolCall.function.name
+                            val arguments = toolCall.function.arguments
+                            
+                            Log.d("DeepSeekService", "Вызов инструмента: $toolName с аргументами: $arguments")
+                            
+                            val toolResult = mcpIntegrationService.callTool(toolName, arguments)
+                            
+                            // Добавляем результат вызова инструмента в историю
+                            apiMessages.add(
+                                ChatMessageRequest(
+                                    role = "tool",
+                                    content = toolResult.getOrElse { error ->
+                                        "Ошибка выполнения инструмента: ${error.message}"
+                                    },
+                                    tool_call_id = toolCall.id
+                                )
+                            )
+                        }
+                        
+                        iteration++
+                        continue // Продолжаем цикл для получения финального ответа
+                    } else {
+                        // Получен финальный ответ без вызовов инструментов
+                        finalResponse = message.content ?: "Извините, не удалось получить ответ."
+                        break
+                    }
+                }
                 
                 val endTime = System.currentTimeMillis()
                 val responseTime = endTime - startTime
                 val responseTimeSeconds = responseTime / 1000.0
                 
-                val content = response.choices.firstOrNull()?.message?.content
-                    ?: "Извините, не удалось получить ответ."
+                val content = finalResponse ?: "Извините, не удалось получить ответ."
                 
-                // Извлекаем информацию о токенах
-                val usage = response.usage
+                // Получаем информацию о токенах из последнего ответа API
+                val usage = lastResponse?.usage
                 val promptTokens = usage?.prompt_tokens ?: 0
                 val completionTokens = usage?.completion_tokens ?: 0
                 val totalTokens = usage?.total_tokens ?: (promptTokens + completionTokens)
@@ -89,6 +151,7 @@ class DeepSeekService {
                 // Логируем время ответа и токены
                 Log.d("DeepSeekService", "Время ответа модели: ${responseTime}ms (${String.format("%.2f", responseTimeSeconds)}s)")
                 Log.d("DeepSeekService", "Токены - Входные: $promptTokens, Выходные: $completionTokens, Всего: $totalTokens")
+                Log.d("DeepSeekService", "Итераций вызова инструментов: $iteration")
                 
                 // Формируем строку с информацией о токенах
                 val tokensInfo = if (totalTokens > 0) {
@@ -97,8 +160,14 @@ class DeepSeekService {
                     "🔢 Токены: информация недоступна"
                 }
                 
+                val toolsInfo = if (iteration > 0) {
+                    "\n🔧 Вызвано инструментов: $iteration"
+                } else {
+                    ""
+                }
+                
                 // Добавляем время ответа и информацию о токенах в конец сообщения для отображения в UI
-                "$content\n\n⏱ Время ответа: ${String.format("%.2f", responseTimeSeconds)}s\n$tokensInfo"
+                "$content\n\n⏱ Время ответа: ${String.format("%.2f", responseTimeSeconds)}s$toolsInfo\n$tokensInfo"
             } catch (e: HttpException) {
                 val endTime = System.currentTimeMillis()
                 val responseTime = endTime - startTime
@@ -109,7 +178,7 @@ class DeepSeekService {
             } catch (e: Exception) {
                 val endTime = System.currentTimeMillis()
                 val responseTime = endTime - startTime
-                Log.e("DeepSeekService", "Ошибка за ${responseTime}ms: ${e.message}")
+                Log.e("DeepSeekService", "Ошибка за ${responseTime}ms: ${e.message}", e)
                 "Произошла ошибка: ${e.message}"
             }
         }
