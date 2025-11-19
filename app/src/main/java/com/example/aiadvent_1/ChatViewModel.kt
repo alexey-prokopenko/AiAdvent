@@ -10,8 +10,15 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 
 class ChatViewModel : ViewModel() {
+    companion object {
+        private const val REMINDER_TAG = "NewsReminder"
+    }
+    
     // MCP клиент для подключения к NewsAPI MCP серверу
     // По умолчанию используем HTTP транспорт для эмулятора Android
     private val mcpClient = McpClient(
@@ -19,7 +26,13 @@ class ChatViewModel : ViewModel() {
     )
     
     private val mcpIntegrationService = McpIntegrationService(mcpClient)
-    private val deepSeekService = DeepSeekService(mcpIntegrationService)
+    private val deepSeekService = DeepSeekService(
+        mcpIntegrationService,
+        onReminderStarted = {
+            Log.d(REMINDER_TAG, "Callback: Reminder запущен, начинаем периодическую проверку")
+            startReminderPolling()
+        }
+    )
     
     private val _messages = MutableStateFlow<List<ChatMessage>>(emptyList())
     val messages: StateFlow<List<ChatMessage>> = _messages.asStateFlow()
@@ -29,6 +42,11 @@ class ChatViewModel : ViewModel() {
     
     private val _mcpConnected = MutableStateFlow(false)
     val mcpConnected: StateFlow<Boolean> = _mcpConnected.asStateFlow()
+    
+    // Фоновая задача для автоматической проверки reminder
+    private var reminderPollingJob: Job? = null
+    private var isReminderActive = false
+    private val reminderIntervalMs = 40_000L // 40 секунд
     
     init {
         // Инициализируем MCP соединение при создании ViewModel
@@ -63,6 +81,9 @@ class ChatViewModel : ViewModel() {
                 val response = deepSeekService.generateResponse(message)
                 val aiMessage = ChatMessage(response, false)
                 _messages.value = _messages.value + aiMessage
+                
+                // Дополнительная проверка по тексту ответа (на случай, если callback не сработал)
+                checkAndStartReminderPolling(response)
             } catch (e: Exception) {
                 val errorMessage = ChatMessage("Произошла ошибка: ${e.message}", false)
                 _messages.value = _messages.value + errorMessage
@@ -72,24 +93,111 @@ class ChatViewModel : ViewModel() {
         }
     }
     
+    /**
+     * Проверяет ответ LLM и запускает периодическую проверку reminder, если он был запущен
+     */
+    private fun checkAndStartReminderPolling(response: String) {
+        // Проверяем, содержит ли ответ информацию о запуске reminder
+        val reminderStarted = response.contains("Reminder запущен", ignoreCase = true) ||
+                             response.contains("reminder запущен", ignoreCase = true) ||
+                             response.contains("будет собирать новости", ignoreCase = true) ||
+                             response.contains("запущен", ignoreCase = true) && response.contains("reminder", ignoreCase = true)
+        
+        if (reminderStarted && !isReminderActive) {
+            Log.d(REMINDER_TAG, "Обнаружен запуск reminder по тексту ответа")
+            Log.d(REMINDER_TAG, "Обнаружен запуск reminder по тексту ответа, начинаем периодическую проверку")
+            startReminderPolling()
+        }
+    }
+    
+    /**
+     * Запускает фоновую задачу для периодической проверки reminder и отправки данных в LLM
+     */
+    private fun startReminderPolling() {
+        if (isReminderActive) {
+            return
+        }
+        
+        isReminderActive = true
+        reminderPollingJob?.cancel()
+        
+        reminderPollingJob = viewModelScope.launch {
+            Log.d(REMINDER_TAG, "Запущена периодическая проверка reminder")
+            
+            delay(reminderIntervalMs)
+            
+            while (isActive && isReminderActive) {
+                try {
+                    val reminderResult = mcpIntegrationService.callTool(
+                        "reminder",
+                        """{"action": "get"}"""
+                    )
+                    
+                    reminderResult.onSuccess { reminderData ->
+                        // Проверяем, есть ли данные
+                        if (reminderData.contains("нет данных", ignoreCase = true) ||
+                            reminderData.contains("пока нет", ignoreCase = true) ||
+                            reminderData.contains("запустите reminder", ignoreCase = true)) {
+                            return@onSuccess
+                        }
+                        
+                        // Ограничиваем размер данных для избежания ошибок "Content Exists Risk"
+                        val limitedData = if (reminderData.length > 3000) {
+                            reminderData.take(3000) + "\n\n[Данные обрезаны для безопасности]"
+                        } else {
+                            reminderData
+                        }
+                        
+                        // Отправляем данные в LLM для создания summary
+                        val summaryResponse = try {
+                            deepSeekService.generateResponse(
+                                "Создай summary на основе следующих данных новостей из reminder:\n\n$limitedData"
+                            )
+                        } catch (e: Exception) {
+                            Log.e(REMINDER_TAG, "Ошибка при создании summary: ${e.message}", e)
+                            if (e.message?.contains("Content Exists Risk", ignoreCase = true) == true ||
+                                e.message?.contains("недопустимые данные", ignoreCase = true) == true) {
+                                "⚠️ Не удалось создать summary из-за ограничений безопасности API. Попробуйте запросить новости позже или с другими параметрами."
+                            } else {
+                                "⚠️ Ошибка при создании summary: ${e.message}"
+                            }
+                        }
+                        
+                        // Добавляем summary в сообщения
+                        val summaryMessage = ChatMessage(summaryResponse, false)
+                        _messages.value = _messages.value + summaryMessage
+                    }.onFailure { error ->
+                        Log.e(REMINDER_TAG, "Ошибка при вызове reminder: ${error.message}", error)
+                        if (error.message?.contains("остановлен", ignoreCase = true) == true) {
+                            isReminderActive = false
+                        }
+                    }
+                    
+                } catch (e: Exception) {
+                    Log.e(REMINDER_TAG, "Исключение при проверке reminder: ${e.message}", e)
+                }
+                
+                delay(reminderIntervalMs)
+            }
+        }
+    }
+    
+    /**
+     * Останавливает периодическую проверку reminder
+     */
+    private fun stopReminderPolling() {
+        isReminderActive = false
+        reminderPollingJob?.cancel()
+        reminderPollingJob = null
+    }
+    
     fun clearChat() {
         _messages.value = emptyList()
     }
     
-    /**
-     * Обновляет URL MCP сервера
-     */
-    fun updateMcpServerUrl(url: String) {
-        viewModelScope.launch {
-            mcpClient.close()
-            // Создаем новый клиент с новым URL
-            // Это требует рефакторинга, но для простоты оставим как есть
-            Log.d("ChatViewModel", "Обновление URL MCP сервера: $url")
-        }
-    }
-    
     override fun onCleared() {
         super.onCleared()
+        stopReminderPolling()
         mcpClient.close()
     }
 } 

@@ -9,7 +9,10 @@ import java.io.PrintWriter
 /**
  * MCP сервер для NewsAPI
  */
-class McpServer(private val newsApiClient: NewsApiClient) {
+class McpServer(
+    private val newsApiClient: NewsApiClient,
+    private val reminderService: ReminderService
+) {
     private val protocolVersion = "2024-11-05"
     
     /**
@@ -163,6 +166,33 @@ class McpServer(private val newsApiClient: NewsApiClient) {
                         }
                     }
                 })
+                
+                // reminder
+                add(buildJsonObject {
+                    put("name", "reminder")
+                    put("description", "Управление напоминаниями о новостях. Запускает фоновую задачу, которая каждые 40 секунд собирает новости из разных стран. При вызове с action='get' возвращает сырые данные новостей в формате JSON, которые LLM должна обработать и создать summary на основе предыдущих ответов.")
+                    putJsonObject("inputSchema") {
+                        put("type", "object")
+                        putJsonObject("properties") {
+                            putJsonObject("action") {
+                                put("type", "string")
+                                put("description", "Действие: 'start' - запустить reminder, 'stop' - остановить, 'status' - проверить статус, 'get' - получить последние данные новостей в JSON формате для создания summary LLM (по умолчанию)")
+                                putJsonArray("enum") {
+                                    add("start")
+                                    add("stop")
+                                    add("status")
+                                    add("get")
+                                }
+                                put("default", "get")
+                            }
+                            putJsonObject("interval") {
+                                put("type", "number")
+                                put("description", "Интервал в секундах между уведомлениями (по умолчанию 40)")
+                                put("default", 40)
+                            }
+                        }
+                    }
+                })
             }
         }
     }
@@ -269,6 +299,62 @@ class McpServer(private val newsApiClient: NewsApiClient) {
                 }
             }
             
+            "reminder" -> {
+                val action = arguments["action"]?.jsonPrimitive?.content ?: "get"
+                val interval = arguments["interval"]?.jsonPrimitive?.doubleOrNull?.toLong() ?: 40L
+                
+                System.err.println("[DEBUG] Reminder action: $action, interval: ${interval}s")
+                
+                val result = when (action) {
+                    "start" -> {
+                        reminderService.startReminder(interval)
+                        "Reminder запущен. Будет собирать новости каждые ${interval} секунд из разных стран."
+                    }
+                    "stop" -> {
+                        reminderService.stopReminder()
+                        "Reminder остановлен."
+                    }
+                    "status" -> {
+                        val isRunning = reminderService.isReminderRunning()
+                        val latestData = reminderService.getLatestNewsData()
+                        buildString {
+                            append("Статус reminder: ${if (isRunning) "запущен" else "остановлен"}\n")
+                            if (latestData != null) {
+                                append("\nПоследние данные новостей (${latestData.timestamp}):\n")
+                                append("Страны: ${latestData.countries.joinToString(", ")}\n")
+                                val totalArticles = latestData.newsByCountry.values.sumOf { data ->
+                                    (data["articles"]?.jsonArray?.size ?: 0).toInt()
+                                }
+                                append("Всего статей: $totalArticles")
+                            } else {
+                                append("\nДанные новостей пока нет. Запустите reminder командой start.")
+                            }
+                        }
+                    }
+                    "get" -> {
+                        val newsDataJson = reminderService.getLatestNewsDataAsJson()
+                        if (newsDataJson != null) {
+                            // Возвращаем сырые данные в формате JSON для обработки LLM
+                            "Данные новостей из разных стран для создания summary:\n\n${newsDataJson.toString()}"
+                        } else {
+                            "Данные новостей пока нет. Запустите reminder командой start, чтобы начать собирать новости из разных стран."
+                        }
+                    }
+                    else -> throw Exception("Неизвестное действие: $action. Используйте: start, stop, status, get")
+                }
+                
+                System.err.println("[DEBUG] handleToolCall completed for tool=\"$toolName\"")
+                
+                buildJsonObject {
+                    putJsonArray("content") {
+                        add(buildJsonObject {
+                            put("type", "text")
+                            put("text", result)
+                        })
+                    }
+                }
+            }
+            
             else -> throw Exception("Unknown tool: $toolName")
         }
     }
@@ -330,7 +416,8 @@ fun main() = runBlocking {
     val apiKey = "07fab6c9eca5436ba1b7f939c5528e1e"
     
     val newsApiClient = NewsApiClient(apiKey)
-    val mcpServer = McpServer(newsApiClient)
+    val reminderService = ReminderService(newsApiClient)
+    val mcpServer = McpServer(newsApiClient, reminderService)
     
     val json = Json {
         ignoreUnknownKeys = true
@@ -385,6 +472,7 @@ fun main() = runBlocking {
             }
         }
     } finally {
+        reminderService.close()
         newsApiClient.close()
     }
 }

@@ -24,8 +24,12 @@ interface DeepSeekApi {
 }
 
 class DeepSeekService(
-    private val mcpIntegrationService: McpIntegrationService? = null
+    private val mcpIntegrationService: McpIntegrationService? = null,
+    private val onReminderStarted: (() -> Unit)? = null
 ) {
+    companion object {
+        private const val REMINDER_TAG = "NewsReminder"
+    }
     private val apiKey = "sk-6cf38ad6d447491a91dd431618a5e150"
     private val baseUrl = "https://api.deepseek.com/"
     private val model = "deepseek-chat"
@@ -33,6 +37,14 @@ class DeepSeekService(
     // Системный промпт с инструкциями для модели
     private val systemPrompt = """
         Ты - полезный ассистент. Отвечай на вопросы пользователя дружелюбно и информативно.
+        
+        Когда ты получаешь данные от инструмента reminder (содержащие JSON с новостями из разных стран), 
+        ты должна создать краткую и информативную summary на русском языке. Summary должна:
+        - Группировать новости по странам
+        - Выделять самые важные и интересные новости
+        - Учитывать контекст предыдущих новостей, если он предоставлен
+        - Быть структурированной и легко читаемой
+        - Использовать эмодзи для визуального разделения (📰 для заголовка, 🌍 для стран, • для новостей)
     """.trimIndent()
 
     private val loggingInterceptor = HttpLoggingInterceptor().apply {
@@ -113,6 +125,18 @@ class DeepSeekService(
                             
                             Log.d("DeepSeekService", "Вызов инструмента: $toolName с аргументами: $arguments")
                             
+                            // Проверяем, был ли вызван reminder с action="start"
+                            if (toolName == "reminder") {
+                                val hasStartAction = arguments.contains("\"action\"") && 
+                                                   (arguments.contains("\"start\"") || 
+                                                    arguments.contains("start") ||
+                                                    arguments.contains("'start'"))
+                                if (hasStartAction) {
+                                    Log.d(REMINDER_TAG, "Обнаружен запуск reminder через инструмент (arguments: $arguments)")
+                                    onReminderStarted?.invoke()
+                                }
+                            }
+                            
                             val toolResult = mcpIntegrationService.callTool(toolName, arguments)
                             
                             // Добавляем результат вызова инструмента в историю
@@ -149,9 +173,7 @@ class DeepSeekService(
                 val totalTokens = usage?.total_tokens ?: (promptTokens + completionTokens)
                 
                 // Логируем время ответа и токены
-                Log.d("DeepSeekService", "Время ответа модели: ${responseTime}ms (${String.format("%.2f", responseTimeSeconds)}s)")
-                Log.d("DeepSeekService", "Токены - Входные: $promptTokens, Выходные: $completionTokens, Всего: $totalTokens")
-                Log.d("DeepSeekService", "Итераций вызова инструментов: $iteration")
+                Log.d("DeepSeekService", "Время ответа: ${String.format("%.2f", responseTimeSeconds)}s, Токены: $totalTokens, Итераций: $iteration")
                 
                 // Формируем строку с информацией о токенах
                 val tokensInfo = if (totalTokens > 0) {
@@ -174,7 +196,13 @@ class DeepSeekService(
                 val errorBody = e.response()?.errorBody()?.string()
                 val errorMessage = errorBody ?: e.message()
                 Log.e("DeepSeekService", "Ошибка HTTP ${e.code()} за ${responseTime}ms: $errorMessage")
-                "Произошла ошибка HTTP ${e.code()}: $errorMessage"
+                
+                // Специальная обработка ошибки "Content Exists Risk"
+                if (e.code() == 400 && errorBody?.contains("Content Exists Risk", ignoreCase = true) == true) {
+                    "⚠️ Контент содержит недопустимые данные согласно политике безопасности API. Попробуйте запросить другие новости или сократить объем данных."
+                } else {
+                    "Произошла ошибка HTTP ${e.code()}: $errorMessage"
+                }
             } catch (e: Exception) {
                 val endTime = System.currentTimeMillis()
                 val responseTime = endTime - startTime
