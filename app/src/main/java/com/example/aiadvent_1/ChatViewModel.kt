@@ -31,6 +31,12 @@ class ChatViewModel : ViewModel() {
         onReminderStarted = {
             Log.d(REMINDER_TAG, "Callback: Reminder запущен, начинаем периодическую проверку")
             startReminderPolling()
+        },
+        onIntermediateResponse = { intermediateResponse ->
+            // Добавляем промежуточный ответ сразу в чат
+            val intermediateMessage = ChatMessage(intermediateResponse, false)
+            _messages.value = _messages.value + intermediateMessage
+            Log.d("ChatViewModel", "Получен промежуточный ответ: ${intermediateResponse.take(100)}...")
         }
     )
     
@@ -79,8 +85,21 @@ class ChatViewModel : ViewModel() {
             try {
                 // Передаем только текущее сообщение пользователя без истории
                 val response = deepSeekService.generateResponse(message)
-                val aiMessage = ChatMessage(response, false)
-                _messages.value = _messages.value + aiMessage
+                
+                // Добавляем финальный ответ только если он не пустой и отличается от последнего промежуточного
+                // (промежуточные ответы уже добавлены через callback)
+                if (response.isNotBlank()) {
+                    val lastMessage = _messages.value.lastOrNull()
+                    // Добавляем финальный ответ только если он отличается от последнего сообщения
+                    if (lastMessage == null || lastMessage.text != response) {
+                        val aiMessage = ChatMessage(response, false)
+                        _messages.value = _messages.value + aiMessage
+                    }
+                } else {
+                    // Если финальный ответ пустой (потому что все уже было отправлено как промежуточные),
+                    // просто логируем это
+                    Log.d("ChatViewModel", "Финальный ответ пустой - все результаты уже отправлены как промежуточные")
+                }
                 
                 // Дополнительная проверка по тексту ответа (на случай, если callback не сработал)
                 checkAndStartReminderPolling(response)
