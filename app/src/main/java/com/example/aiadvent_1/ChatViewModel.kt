@@ -19,13 +19,19 @@ class ChatViewModel : ViewModel() {
         private const val REMINDER_TAG = "NewsReminder"
     }
     
-    // MCP клиент для подключения к NewsAPI MCP серверу
+    // MCP клиенты для подключения к NewsAPI и OpenWeatherMap MCP серверам
     // По умолчанию используем HTTP транспорт для эмулятора Android
-    private val mcpClient = McpClient(
-        transport = McpTransport.Http(url = "http://10.0.2.2:3001")
+    private val newsMcpClient = McpClient(
+        transport = McpTransport.Http(url = "http://10.0.2.2:3001") // NewsAPI сервер
     )
     
-    private val mcpIntegrationService = McpIntegrationService(mcpClient)
+    private val weatherMcpClient = McpClient(
+        transport = McpTransport.Http(url = "http://10.0.2.2:3002") // OpenWeatherMap сервер
+    )
+    
+    private val mcpIntegrationService = McpIntegrationService(
+        mcpClients = listOf(newsMcpClient, weatherMcpClient)
+    )
     private val deepSeekService = DeepSeekService(
         mcpIntegrationService,
         onReminderStarted = {
@@ -55,15 +61,15 @@ class ChatViewModel : ViewModel() {
     private val reminderIntervalMs = 40_000L // 40 секунд
     
     init {
-        // Инициализируем MCP соединение при создании ViewModel
+        // Инициализируем MCP соединения при создании ViewModel
         viewModelScope.launch {
             try {
-                val initResult = mcpClient.initialize()
+                val initResult = mcpIntegrationService.initializeAll()
                 if (initResult.isSuccess) {
                     _mcpConnected.value = true
-                    Log.d("ChatViewModel", "MCP сервер подключен успешно")
+                    Log.d("ChatViewModel", "MCP серверы подключены успешно")
                 } else {
-                    Log.w("ChatViewModel", "Не удалось подключиться к MCP серверу: ${initResult.exceptionOrNull()?.message}")
+                    Log.w("ChatViewModel", "Не удалось подключиться к MCP серверам: ${initResult.exceptionOrNull()?.message}")
                     _mcpConnected.value = false
                 }
             } catch (e: Exception) {
@@ -217,6 +223,6 @@ class ChatViewModel : ViewModel() {
     override fun onCleared() {
         super.onCleared()
         stopReminderPolling()
-        mcpClient.close()
+        mcpIntegrationService.closeAll()
     }
 } 

@@ -4,7 +4,8 @@
   "description": "HTTP Proxy для MCP серверов для подключения с Android устройств",
   "main": "mcp-http-proxy.js",
   "scripts": {
-    "start:newsapi:kotlin": "./start-newsapi-mcp-kotlin.sh 3001"
+    "start:newsapi:kotlin": "./start-newsapi-mcp-kotlin.sh 3001",
+    "start:openweathermap:kotlin": "./start-openweathermap-mcp-kotlin.sh 3002"
   },
   "keywords": [
     "mcp",
